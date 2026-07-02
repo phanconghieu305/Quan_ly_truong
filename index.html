@@ -624,30 +624,44 @@ function delLog(id){
 }
 
 /* ================== THỐNG KÊ THEO KỲ ================== */
-let statsMode='month';                 // month | quarter | year
+let statsMode='month';                 // month | quarter | schoolyear | year | range
 let statsMonth=thisMonth();
 let statsYear=+thisMonth().slice(0,4);
 let statsQ=Math.ceil(+thisMonth().slice(5,7)/3);
+// Năm học: bắt đầu tháng 9 — nếu đang từ tháng 9 trở đi thì năm học bắt đầu năm nay, ngược lại là năm trước
+let statsSYear=+thisMonth().slice(5,7)>=9?+thisMonth().slice(0,4):+thisMonth().slice(0,4)-1;
+let statsFrom=statsSYear+'-09-01';
+let statsTo=today();
 
-function statsPrefixes(){
-  if(statsMode==='month')return[statsMonth];
+// Trả về khoảng ngày {from, to} của kỳ thống kê
+function statsRange(){
+  if(statsMode==='month')return{from:statsMonth+'-01',to:statsMonth+'-31'};
   if(statsMode==='quarter'){
-    const start=(statsQ-1)*3+1;
-    return[0,1,2].map(i=>statsYear+'-'+String(start+i).padStart(2,'0'));
+    const m1=(statsQ-1)*3+1;
+    return{from:statsYear+'-'+String(m1).padStart(2,'0')+'-01',to:statsYear+'-'+String(m1+2).padStart(2,'0')+'-31'};
   }
-  return[statsYear+'-'];
+  if(statsMode==='schoolyear')return{from:statsSYear+'-09-01',to:(statsSYear+1)+'-08-31'};
+  if(statsMode==='year')return{from:statsYear+'-01-01',to:statsYear+'-12-31'};
+  return{from:statsFrom<=statsTo?statsFrom:statsTo,to:statsFrom<=statsTo?statsTo:statsFrom};
 }
 function statsLabel(){
   if(statsMode==='month')return fmtMonth(statsMonth);
   if(statsMode==='quarter')return'quý '+statsQ+'/'+statsYear;
-  return'năm '+statsYear;
+  if(statsMode==='schoolyear')return'năm học '+statsSYear+'–'+(statsSYear+1);
+  if(statsMode==='year')return'năm '+statsYear;
+  const r=statsRange();
+  return'từ '+fmt(r.from)+' đến '+fmt(r.to);
 }
 function statsSuffix(){
   if(statsMode==='month')return statsMonth;
   if(statsMode==='quarter')return statsYear+'-quy'+statsQ;
-  return String(statsYear);
+  if(statsMode==='schoolyear')return'namhoc-'+statsSYear+'-'+(statsSYear+1);
+  if(statsMode==='year')return String(statsYear);
+  const r=statsRange();
+  return r.from+'_den_'+r.to;
 }
-const inPeriod=(d,px)=>px.some(p=>(d||'').startsWith(p));
+// d nằm trong khoảng ngày r (so sánh chuỗi ISO an toàn)
+const inPeriod=(d,r)=>!!d&&d>=r.from&&d<=r.to;
 
 // Tính điểm 1 trường trong kỳ (px = danh sách tiền tố tháng)
 function scoreSchool(s,px){
@@ -674,7 +688,7 @@ function scoreSchool(s,px){
 }
 
 function renderStats(){
-  const px=statsPrefixes();
+  const px=statsRange();
   const levels=levelsPresent();
   const sections=levels.map(lv=>{
     const schools=schoolsSorted().filter(s=>(s.level||'Khác')===lv);
@@ -714,11 +728,15 @@ function renderStats(){
         <select onchange="statsMode=this.value;render()">
           <option value="month" ${statsMode==='month'?'selected':''}>Theo tháng</option>
           <option value="quarter" ${statsMode==='quarter'?'selected':''}>Theo quý</option>
-          <option value="year" ${statsMode==='year'?'selected':''}>Theo năm</option>
+          <option value="schoolyear" ${statsMode==='schoolyear'?'selected':''}>Theo năm học</option>
+          <option value="year" ${statsMode==='year'?'selected':''}>Theo năm dương lịch</option>
+          <option value="range" ${statsMode==='range'?'selected':''}>Tùy chọn khoảng thời gian</option>
         </select>
         ${statsMode==='month'?`<input type="month" value="${statsMonth}" onchange="statsMonth=this.value||statsMonth;render()">`:''}
         ${statsMode==='quarter'?`<select onchange="statsQ=+this.value;render()">${[1,2,3,4].map(q=>`<option value="${q}" ${statsQ===q?'selected':''}>Quý ${q}</option>`).join('')}</select><input type="number" min="2000" max="2100" value="${statsYear}" style="width:92px" onchange="statsYear=+this.value||statsYear;render()">`:''}
+        ${statsMode==='schoolyear'?`<select onchange="statsSYear=+this.value;render()">${[-2,-1,0,1].map(i=>{const y=statsSYear+i;return`<option value="${y}" ${i===0?'selected':''}>Năm học ${y}–${y+1}</option>`}).join('')}</select>`:''}
         ${statsMode==='year'?`<input type="number" min="2000" max="2100" value="${statsYear}" style="width:92px" onchange="statsYear=+this.value||statsYear;render()">`:''}
+        ${statsMode==='range'?`<label style="margin:0;display:flex;align-items:center;gap:5px">Từ <input type="date" value="${statsFrom}" onchange="statsFrom=this.value||statsFrom;render()" style="width:auto"></label><label style="margin:0;display:flex;align-items:center;gap:5px">đến <input type="date" value="${statsTo}" onchange="statsTo=this.value||statsTo;render()" style="width:auto"></label>`:''}
         <button class="btn" onclick="exportDetailXLSX()">⬇ Xuất Excel chi tiết</button>
         <button class="btn ghost" onclick="exportStatsCSV()">⬇ Bảng điểm (CSV)</button>
       </div>
@@ -736,7 +754,7 @@ function renderStats(){
 }
 
 function rankingRows(){
-  const px=statsPrefixes();
+  const px=statsRange();
   const rows=[['Bậc học','Hạng','Trường','Báo cáo','HĐ cấp trên','HĐ trường','Ưu điểm','Vi phạm','Tổng điểm','Điểm liệt','Ghi chú']];
   levelsPresent().forEach(lv=>{
     const schools=schoolsSorted().filter(s=>(s.level||'Khác')===lv);
@@ -804,7 +822,7 @@ function exportDetailXLSX(){
     alert('Không tải được thư viện Excel (cần kết nối mạng). Sẽ xuất bảng điểm dạng CSV thay thế.');
     exportStatsCSV();return;
   }
-  const px=statsPrefixes();
+  const px=statsRange();
   const wb=XLSX.utils.book_new();
   const INK='1B3A6B',RED='B3372E',GRN='2E7D4F',AMB='B07D1F';
   const add=(rows,name,opts)=>{
