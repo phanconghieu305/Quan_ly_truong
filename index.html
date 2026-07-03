@@ -100,6 +100,16 @@ label{font-size:.8rem;font-weight:600;color:var(--muted);display:block;margin-bo
 .qs-ok{color:var(--ok)} .qs-late{color:var(--warn)} .qs-miss{color:var(--stamp)}
 .qs-wait{color:var(--muted)} .qs-good{color:var(--ok)} .qs-pass{color:var(--ink)}
 .qs-fail{color:var(--warn)} .qs-none{color:var(--stamp)} .qs-un{color:var(--muted)}
+.chip{display:inline-block;padding:2px 10px;margin:3px 4px 3px 0;border:1.5px solid;border-radius:14px;font-size:.78rem;font-weight:600;background:#fff;white-space:nowrap}
+.chip.qs-ok{color:var(--ok);border-color:var(--ok)}
+.chip.qs-late{color:var(--warn);border-color:var(--warn)}
+.chip.qs-miss{color:var(--stamp);border-color:var(--stamp)}
+.chip.qs-wait{color:var(--muted);border-color:var(--muted)}
+.chip.qs-good{color:var(--ok);border-color:var(--ok)}
+.chip.qs-pass{color:var(--ink);border-color:var(--ink)}
+.chip.qs-fail{color:var(--warn);border-color:var(--warn)}
+.chip.qs-none{color:var(--stamp);border-color:var(--stamp)}
+.chip.qs-un{color:var(--muted);border-color:var(--muted);border-style:dashed}
 /* Chế độ chỉ xem: ẩn mọi nút thao tác, khóa ô đánh giá */
 body.viewmode .btn:not(.allow-view){display:none!important}
 body.viewmode #btnImport{display:none!important}
@@ -232,7 +242,7 @@ function toggleCard(k){expanded.has(k)?expanded.delete(k):expanded.add(k);render
 // Dựng khối thống kê nhanh: [[nhãn, lớp màu, mảng tên trường], ...]
 function qsumHTML(items){
   const lines=items.filter(it=>it[2].length).map(it=>
-    `<div class="qline"><b class="${it[1]}">${it[0]} (${it[2].length}):</b> ${it[2].map(esc).join(', ')}</div>`
+    `<div class="qline"><b class="${it[1]}">${it[0]} (${it[2].length}):</b><br>${it[2].map(n=>'<span class="chip '+it[1]+'">'+esc(n)+'</span>').join('')}</div>`
   ).join('');
   return lines?'<div class="qsum">'+lines+'</div>':'';
 }
@@ -461,7 +471,7 @@ function renderUpper(){
     return `<div class="card">
       <div class="topline">
         <div><h2>${esc(a.title)}</h2>
-        <span class="deadline">Ngày: ${fmt(a.date)||'chưa đặt'} · Đối tượng: ${tg.length} trường · Đã đánh giá ${rated}/${tg.length}</span>
+        <span class="deadline">Ngày: ${fmt(a.date)||'chưa đặt'}${a.time?' · '+a.time:''}${a.place?' · 📍 '+esc(a.place):''} · Đối tượng: ${tg.length} trường · Đã đánh giá ${rated}/${tg.length}</span>
         ${a.note?'<div class="note">'+esc(a.note)+'</div>':''}</div>
         <div class="rowactions">
           <button class="btn sm ghost allow-view" onclick="toggleCard('${key}')">${open?'▲ Thu gọn':'▼ Chi tiết'}</button>
@@ -487,6 +497,8 @@ function openUpperForm(id){
     <h3>${id?'Sửa hoạt động':'Thêm hoạt động cấp trên'}</h3>
     <div class="field"><label>Tên hoạt động *</label><input id="f_title" value="${esc(a.title||'')}" placeholder="VD: Hội thi giáo viên dạy giỏi cấp quận"></div>
     <div class="field"><label>Ngày diễn ra</label><input type="date" id="f_date" value="${a.date||today()}"></div>
+    <div class="field"><label>Giờ (nếu có)</label><input type="time" id="f_time" value="${a.time||''}"></div>
+    <div class="field"><label>Địa điểm (nếu có)</label><input id="f_place" value="${esc(a.place||'')}" placeholder="VD: Hội trường Trung tâm hành chính quận"></div>
     <div class="field"><label>Ghi chú chung (nếu có)</label><textarea id="f_note" placeholder="VD: Yêu cầu mỗi trường cử ít nhất 2 giáo viên...">${esc(a.note||'')}</textarea></div>
     ${targetPickerHTML(a.targets)}
     <div class="actions">
@@ -498,11 +510,13 @@ function saveUpper(id){
   const title=document.getElementById('f_title').value.trim();
   if(!title){alert('Vui lòng nhập tên hoạt động');return}
   const date=document.getElementById('f_date').value||today();
+  const time=document.getElementById('f_time').value;
+  const place=document.getElementById('f_place').value.trim();
   const note=document.getElementById('f_note').value.trim();
   const targets=readTargets();
   if(!targets.length){alert('Vui lòng chọn ít nhất 1 trường thuộc đối tượng đề nghị.');return}
-  if(id){const a=data.upperActs.find(x=>x.id===id);a.title=title;a.date=date;a.note=note;a.targets=targets}
-  else{data.upperActs.push({id:uid(),title,date,note,targets,evals:{}})}
+  if(id){const a=data.upperActs.find(x=>x.id===id);a.title=title;a.date=date;a.time=time;a.place=place;a.note=note;a.targets=targets}
+  else{data.upperActs.push({id:uid(),title,date,time,place,note,targets,evals:{}})}
   save();closeModal();render();
 }
 function delUpper(id){
@@ -515,7 +529,7 @@ function setUpperEval(aid,sid,val){
   a.evals=a.evals||{};
   a.evals[sid]=a.evals[sid]||{};
   a.evals[sid].r=val;
-  save();
+  save();render();
 }
 function setUpperNote(aid,sid,val){
   if(isView())return;
@@ -845,7 +859,7 @@ function schoolSummaryRows(px){
     if(ups.length){
       ups.forEach(a=>{
         const ev=(a.evals||{})[s.id];
-        sum.push(['HĐ cấp trên',a.title,fmt(a.date),ev&&ev.r?UPPER_R[ev.r].label:'Chưa đánh giá',ev&&ev.note?ev.note:'']);
+        sum.push(['HĐ cấp trên',a.title+(a.place?' — '+a.place:''),fmt(a.date)+(a.time?' '+a.time:''),ev&&ev.r?UPPER_R[ev.r].label:'Chưa đánh giá',ev&&ev.note?ev.note:'']);
       });
     }else{sum.push(['HĐ cấp trên','(Không thuộc đối tượng hoạt động nào trong kỳ)','','',''])}
     const owns=data.ownActs.filter(a=>inPeriod(a.date,px)&&a.schoolId===s.id);
@@ -921,11 +935,11 @@ function exportDetailXLSX(){
   });
   add(bc,'Báo cáo',{filter:true});
   // 3. HĐ cấp trên trong kỳ
-  const ct=[['Hoạt động','Ngày','Trường','Bậc học','Đánh giá','Ghi chú']];
+  const ct=[['Hoạt động','Ngày','Giờ','Địa điểm','Trường','Bậc học','Đánh giá','Ghi chú']];
   data.upperActs.filter(a=>inPeriod(a.date,px)).forEach(a=>{
     targetSchools(a).forEach(s=>{
       const ev=(a.evals||{})[s.id];
-      ct.push([a.title,fmt(a.date),s.name,s.level||'',ev&&ev.r?UPPER_R[ev.r].label:'Chưa đánh giá',ev&&ev.note?ev.note:'']);
+      ct.push([a.title,fmt(a.date),a.time||'',a.place||'',s.name,s.level||'',ev&&ev.r?UPPER_R[ev.r].label:'Chưa đánh giá',ev&&ev.note?ev.note:'']);
     });
   });
   add(ct,'HĐ cấp trên',{filter:true});
@@ -1107,7 +1121,7 @@ async function syncStartup(){
 }
 
 /* ================== KHỞI ĐỘNG ================== */
-document.getElementById('todayLabel').textContent='Bản 13 · Hôm nay: '+fmt(today());
+document.getElementById('todayLabel').textContent='Bản 14 · Hôm nay: '+fmt(today());
 applyRole(sync.role||'edit');
 render();
 syncStartup();
